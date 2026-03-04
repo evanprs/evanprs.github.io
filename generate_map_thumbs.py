@@ -30,11 +30,6 @@ THUMBS_DIR = ROOT / "images" / "map-thumbs"
 THUMIO_BASE = "https://image.thum.io/get/noanimate/width/160/crop/675"
 DELAY = 1.0  # seconds between requests, to be polite
 
-IMG_STYLE = (
-    "height:30px;width:53px;object-fit:cover;"
-    "border:1px solid #bbb;border-radius:3px;"
-    "vertical-align:middle;margin-right:6px;"
-)
 
 
 def url_to_filename(url: str, ext: str = ".png") -> str:
@@ -130,11 +125,7 @@ def main():
             continue
 
         href = a["href"]
-        img_tag = (
-            f'<img alt="" class="no-invert" '
-            f'src="images/map-thumbs/{dest.name}" '
-            f'style="{IMG_STYLE}"/>'
-        )
+        img_tag = f'<img alt="" src="images/map-thumbs/{dest.name}" class="map-thumb"/>'
         # Match the exact <a href="..."> for this link; skip if img already precedes it
         target = f'<a href="{escape(href)}">'
         if img_tag in html:

@@ -474,4 +474,9 @@ label.margin-toggle:not(.sidenote-number) {
    img:not([src$=".svg"]) {
         width: 100%;
     }
+
+    img.map-thumb {
+        width: 53px;
+        height: 30px;
+    }
 }
