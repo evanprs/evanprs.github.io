@@ -8,9 +8,21 @@ img {
 }
 
 @media (prefers-color-scheme: dark) {
-  img:not(.no-invert) {
+  img.invert {
     filter: invert(1) brightness(100%);
   }
+}
+
+.map-thumb {
+  height: 30px;
+  width: 53px;
+  max-width: none;
+  object-fit: cover;
+  border: 1px solid #bbb;
+  border-radius: 3px;
+  display: inline-block;
+  vertical-align: middle;
+  margin-right: 6px;
 }
 
 
