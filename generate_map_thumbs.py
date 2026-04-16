@@ -8,11 +8,13 @@ saves them to images/map-thumbs/, then updates index.html with thumbnail
 Usage:
   python generate_map_thumbs.py           # process all missing links
   python generate_map_thumbs.py --test    # process first link only
+  python generate_map_thumbs.py add TITLE URL  # add a new map entry
 
 Re-run safely: skips URLs that already have a saved thumbnail.
 Dependencies: pip install requests beautifulsoup4
 """
 
+import argparse
 import hashlib
 import sys
 import time
@@ -30,6 +32,7 @@ THUMBS_DIR = ROOT / "images" / "map-thumbs"
 THUMIO_BASE = "https://image.thum.io/get/noanimate/width/160/crop/675"
 DELAY = 1.0  # seconds between requests, to be polite
 
+MAP_LIST_MARKER = "<!-- map-list-end -->"
 
 
 def url_to_filename(url: str, ext: str = ".png") -> str:
@@ -43,6 +46,14 @@ CONTENT_TYPE_EXT = {
     "image/gif": ".gif",
     "image/webp": ".webp",
 }
+
+
+def find_existing_thumb(url: str) -> Path | None:
+    """Return the saved thumbnail for url if it exists (any extension)."""
+    stem = hashlib.sha1(url.encode()).hexdigest()[:12]
+    for p in THUMBS_DIR.glob(f"{stem}.*"):
+        return p
+    return None
 
 
 def fetch_screenshot(url: str, dest_stem: Path) -> Path | None:
@@ -65,8 +76,60 @@ def fetch_screenshot(url: str, dest_stem: Path) -> Path | None:
     return dest
 
 
-def main():
-    test_mode = "--test" in sys.argv
+def add_map(title: str, url: str):
+    """Fetch a thumbnail and insert a new map <li> into index.html."""
+    THUMBS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Check for duplicates using BeautifulSoup (handles &amp; etc.)
+    html = INDEX_HTML.read_text()
+    soup = BeautifulSoup(html, "html.parser")
+    maps_h2 = soup.find("h2", id="Maps link dump")
+    if not maps_h2:
+        print("ERROR: Could not find <h2 id='Maps link dump'> in index.html")
+        sys.exit(1)
+    ul = maps_h2.find_parent("section").find("ul")
+    for a in ul.find_all("a"):
+        if a["href"] == url:
+            print(f"ERROR: URL already in list: {url}")
+            sys.exit(1)
+
+    # Fetch thumbnail
+    existing = find_existing_thumb(url)
+    if existing:
+        print(f"Thumbnail already exists: {existing.name}")
+        dest = existing
+    else:
+        print(f"Fetching thumbnail for: {title}")
+        dest_stem = THUMBS_DIR / url_to_filename(url, "")
+        dest = fetch_screenshot(url, dest_stem)
+        if dest:
+            print(f"  saved {dest.name}")
+        else:
+            print("  Failed to fetch thumbnail, adding entry without image")
+
+    # Build new <li>
+    if dest:
+        img_tag = f'<img alt="" src="images/map-thumbs/{dest.name}" class="map-thumb"/>'
+    else:
+        img_tag = ""
+    new_li = f'              <li>{img_tag}<a href="{escape(url)}">{escape(title)}</a></li>\n'
+
+    # Insert before the marker
+    if MAP_LIST_MARKER not in html:
+        print(f"ERROR: Could not find {MAP_LIST_MARKER!r} in index.html")
+        sys.exit(1)
+
+    html = html.replace(
+        f"              {MAP_LIST_MARKER}",
+        new_li + f"              {MAP_LIST_MARKER}",
+        1,
+    )
+    INDEX_HTML.write_text(html)
+    print(f"Added '{title}' to index.html")
+
+
+def update_thumbs(test_mode: bool = False):
+    """Fetch missing thumbnails and update <img> tags for existing list items."""
     THUMBS_DIR.mkdir(parents=True, exist_ok=True)
 
     soup = BeautifulSoup(INDEX_HTML.read_text(), "html.parser")
@@ -85,13 +148,6 @@ def main():
     else:
         print(f"Processing {len(items)} links")
 
-    def find_existing(url: str) -> Path | None:
-        """Return the saved thumbnail for url if it exists (any extension)."""
-        stem = hashlib.sha1(url.encode()).hexdigest()[:12]
-        for p in THUMBS_DIR.glob(f"{stem}.*"):
-            return p
-        return None
-
     # --- Step 1: fetch missing screenshots ---
     for li in items:
         a = li.find("a")
@@ -100,7 +156,7 @@ def main():
         url = a["href"]
         text = a.get_text(strip=True)
 
-        if find_existing(url):
+        if find_existing_thumb(url):
             print(f"  skip (exists): {text}")
             continue
 
@@ -120,7 +176,7 @@ def main():
         a = li.find("a")
         if not a:
             continue
-        dest = find_existing(a["href"])
+        dest = find_existing_thumb(a["href"])
         if dest is None:
             continue
 
@@ -141,6 +197,23 @@ def main():
         print(f"\nUpdated index.html ({changed} thumbnails added)")
     else:
         print("\nindex.html already up to date")
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--test", action="store_true", help="(update mode) process first link only")
+
+    subparsers = parser.add_subparsers(dest="command")
+    add_parser = subparsers.add_parser("add", help="Add a new map entry")
+    add_parser.add_argument("title", help="Display title for the map link")
+    add_parser.add_argument("url", help="URL of the map")
+
+    args = parser.parse_args()
+
+    if args.command == "add":
+        add_map(args.title, args.url)
+    else:
+        update_thumbs(test_mode=args.test)
 
 
 if __name__ == "__main__":
